@@ -21,7 +21,9 @@ export const useAuthStore = create<AuthStore>()(
       isLoading: false,
 
       login: (token: string, user: User) => {
-        Cookies.set("auth_token", token, { expires: 7, secure: true });
+        // secure:true only works on HTTPS — use false for HTTP deployments
+        const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+        Cookies.set("auth_token", token, { expires: 7, secure: isHttps, sameSite: "lax" });
         set({ token, user, isAuthenticated: true, isLoading: false });
       },
 
