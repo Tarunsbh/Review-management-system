@@ -1,0 +1,529 @@
+// ============================================================
+// eGlobe Review Management System
+// Prisma Schema — Microsoft SQL Server 2022
+// ============================================================
+// All id fields explicitly use NVarChar(36) so Prisma creates
+// the exact same column type as the T-SQL DDL scripts.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Users
+// ============================================================
+
+model User {
+  id        String    @id @default(cuid()) @db.NVarChar(36)
+  email     String    @unique              @db.NVarChar(255)
+  name      String                         @db.NVarChar(255)
+  password  String                         @db.NVarChar(255)
+  role      String    @default("ADMIN")    @db.NVarChar(20)
+  avatar    String?                        @db.NVarChar(500)
+  isActive  Boolean   @default(true)
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([email])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ============================================================
+// Settings  (one row per logical section)
+// ============================================================
+
+model Settings {
+  id        String   @id @default(cuid()) @db.NVarChar(36)
+  section   String   @unique              @db.NVarChar(100)
+  data      String                        @db.NVarChar(Max)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([section])
+  @@map("settings")
+}
+
+// ============================================================
+// Google OAuth Credentials
+// ============================================================
+
+model GoogleAuth {
+  id           String    @id @default(cuid()) @db.NVarChar(36)
+  accessToken  String?                        @db.NVarChar(Max)
+  refreshToken String?                        @db.NVarChar(Max)
+  expiresAt    DateTime?
+  isConnected  Boolean   @default(false)
+  placeId      String?                        @db.NVarChar(255)
+  accountId    String?                        @db.NVarChar(255)
+  locationId   String?                        @db.NVarChar(255)
+  accountName  String?                        @db.NVarChar(255)
+  locationName String?                        @db.NVarChar(255)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("google_auth")
+}
+
+// ============================================================
+// Reviews
+// ============================================================
+
+model Review {
+  id               String   @id @default(cuid()) @db.NVarChar(36)
+  googleReviewId   String   @unique              @db.NVarChar(255)
+  reviewerName     String                        @db.NVarChar(255)
+  reviewerPhotoUrl String?                       @db.NVarChar(500)
+  rating           Int
+  text             String                        @db.NVarChar(Max)
+  publishedAt      DateTime
+  sentiment        String   @default("NEUTRAL")  @db.NVarChar(20)
+  sentimentScore   Float    @default(0.5)
+  keywords         String   @default("[]")       @db.NVarChar(Max)
+  googleReviewUrl  String?                       @db.NVarChar(500)
+  isSynced         Boolean  @default(true)
+  isNew            Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  reply     ReviewReply?
+  aiReplies AiReplyHistory[]
+
+  @@index([rating])
+  @@index([sentiment])
+  @@index([publishedAt])
+  @@index([isNew])
+  @@map("reviews")
+}
+
+// ============================================================
+// Review Replies
+// ============================================================
+
+model ReviewReply {
+  id             String    @id @default(cuid()) @db.NVarChar(36)
+  reviewId       String    @unique              @db.NVarChar(36)
+  text           String                         @db.NVarChar(Max)
+  isAiGenerated  Boolean   @default(false)
+  postedToGoogle Boolean   @default(false)
+  postedAt       DateTime?
+  googleReplyId  String?                        @db.NVarChar(255)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([reviewId])
+  @@map("review_replies")
+}
+
+// ============================================================
+// AI Reply History
+// ============================================================
+
+model AiReplyHistory {
+  id             String   @id @default(cuid()) @db.NVarChar(36)
+  reviewId       String                        @db.NVarChar(36)
+  generatedReply String                        @db.NVarChar(Max)
+  tone           String                        @db.NVarChar(50)
+  model          String   @default("gpt-4o")   @db.NVarChar(100)
+  prompt         String?                       @db.NVarChar(Max)
+  tokensUsed     Int?
+  processingTime Float?
+  wasUsed        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([reviewId])
+  @@index([tone])
+  @@index([wasUsed])
+  @@map("ai_reply_history")
+}
+
+// ============================================================
+// Analytics Cache
+// ============================================================
+
+model AnalyticsCache {
+  id        String   @id @default(cuid()) @db.NVarChar(36)
+  cacheKey  String   @unique              @db.NVarChar(255)
+  data      String                        @db.NVarChar(Max)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([cacheKey])
+  @@index([expiresAt])
+  @@map("analytics_cache")
+}
+
+// ============================================================
+// Sync Logs
+// ============================================================
+
+model SyncLog {
+  id             String    @id @default(cuid()) @db.NVarChar(36)
+  status         String                         @db.NVarChar(20)
+  reviewsSynced  Int       @default(0)
+  newReviews     Int       @default(0)
+  updatedReviews Int       @default(0)
+  errors         String?                        @db.NVarChar(Max)
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  duration       Float?
+  triggeredBy    String    @default("cron")     @db.NVarChar(50)
+
+  @@index([status])
+  @@index([startedAt])
+  @@map("sync_logs")
+}
+
+// ============================================================
+// Notifications
+// ============================================================
+
+model Notification {
+  id        String   @id @default(cuid()) @db.NVarChar(36)
+  type      String                        @db.NVarChar(30)
+  title     String                        @db.NVarChar(255)
+  message   String                        @db.NVarChar(Max)
+  isRead    Boolean  @default(false)
+  reviewId  String?                       @db.NVarChar(36)
+  metadata  String?                       @db.NVarChar(Max)
+  createdAt DateTime @default(now())
+
+  @@index([isRead])
+  @@index([type])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================================
+// API Request Logs
+// ============================================================
+
+model ApiLog {
+  id          String   @id @default(cuid()) @db.NVarChar(36)
+  method      String                        @db.NVarChar(10)
+  endpoint    String                        @db.NVarChar(500)
+  statusCode  Int
+  duration    Float
+  ipAddress   String?                       @db.NVarChar(45)
+  userId      String?                       @db.NVarChar(36)
+  userAgent   String?                       @db.NVarChar(500)
+  requestBody String?                       @db.NVarChar(Max)
+  error       String?                       @db.NVarChar(Max)
+  createdAt   DateTime @default(now())
+
+  @@index([statusCode])
+  @@index([createdAt])
+  @@map("api_logs")
+}
+
+// ============================================================
+// Business Info
+// ============================================================
+
+model BusinessInfo {
+  id          String   @id @default(cuid()) @db.NVarChar(36)
+  name        String                        @db.NVarChar(255)
+  address     String?                       @db.NVarChar(500)
+  phone       String?                       @db.NVarChar(50)
+  email       String?                       @db.NVarChar(255)
+  website     String?                       @db.NVarChar(500)
+  logoUrl     String?                       @db.NVarChar(500)
+  description String?                       @db.NVarChar(Max)
+  industry    String?                       @db.NVarChar(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("business_info")
+}
+
+// ============================================================
+// Enterprise SaaS Models
+// ============================================================
+
+// Business (multi-tenant entity)
+model Business {
+  id        String    @id @default(cuid()) @db.NVarChar(36)
+  name      String                         @db.NVarChar(255)
+  slug      String    @unique              @db.NVarChar(255)
+  industry  String?                        @db.NVarChar(100)
+  ownerId   String                         @db.NVarChar(36)
+  logoUrl   String?                        @db.NVarChar(500)
+  isActive  Boolean   @default(true)
+  plan      String    @default("free")     @db.NVarChar(50)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  locations     BusinessLocation[]
+  googleAccounts GoogleAccount[]
+  teams          Team[]
+  subscriptions  Subscription[]
+  invoices       Invoice[]
+  templates      ReviewTemplate[]
+  scheduledReplies ScheduledReply[]
+  webhooks       Webhook[]
+  auditLogs      AuditLog[]
+
+  @@index([ownerId])
+  @@index([slug])
+  @@index([isActive])
+  @@map("businesses")
+}
+
+// Business Location
+model BusinessLocation {
+  id              String    @id @default(cuid()) @db.NVarChar(36)
+  businessId      String                         @db.NVarChar(36)
+  name            String                         @db.NVarChar(255)
+  address         String?                        @db.NVarChar(500)
+  placeId         String?                        @db.NVarChar(255)
+  googleAccountId String?                        @db.NVarChar(36)
+  timezone        String    @default("UTC")      @db.NVarChar(100)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@index([placeId])
+  @@map("business_locations")
+}
+
+// Google Account (per business)
+model GoogleAccount {
+  id           String    @id @default(cuid()) @db.NVarChar(36)
+  businessId   String                         @db.NVarChar(36)
+  accountId    String?                        @db.NVarChar(255)
+  locationId   String?                        @db.NVarChar(255)
+  accessToken  String?                        @db.NVarChar(Max)
+  refreshToken String?                        @db.NVarChar(Max)
+  isConnected  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@map("google_accounts")
+}
+
+// Team
+model Team {
+  id          String    @id @default(cuid()) @db.NVarChar(36)
+  businessId  String                         @db.NVarChar(36)
+  name        String                         @db.NVarChar(255)
+  description String?                        @db.NVarChar(Max)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  business Business     @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  members  TeamMember[]
+
+  @@index([businessId])
+  @@map("teams")
+}
+
+// Team Member
+model TeamMember {
+  id        String    @id @default(cuid()) @db.NVarChar(36)
+  teamId    String                         @db.NVarChar(36)
+  userId    String                         @db.NVarChar(36)
+  role      String    @default("STAFF")    @db.NVarChar(20)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+// Subscription Plan
+model Plan {
+  id            String    @id @default(cuid()) @db.NVarChar(36)
+  name          String                         @db.NVarChar(100)
+  slug          String    @unique              @db.NVarChar(100)
+  price         Float     @default(0)
+  interval      String    @default("month")    @db.NVarChar(20)
+  features      String    @default("[]")       @db.NVarChar(Max)
+  reviewLimit   Int       @default(50)
+  locationLimit Int       @default(1)
+  userLimit     Int       @default(1)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  subscriptions Subscription[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@map("plans")
+}
+
+// Subscription
+model Subscription {
+  id                   String    @id @default(cuid()) @db.NVarChar(36)
+  businessId           String                         @db.NVarChar(36)
+  planId               String                         @db.NVarChar(36)
+  status               String    @default("active")   @db.NVarChar(30)
+  trialEndsAt          DateTime?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  stripeCustomerId     String?                        @db.NVarChar(255)
+  stripeSubscriptionId String?                        @db.NVarChar(255)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id], onUpdate: Cascade)
+  invoices Invoice[]
+
+  @@index([businessId])
+  @@index([planId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// Invoice
+model Invoice {
+  id              String    @id @default(cuid()) @db.NVarChar(36)
+  subscriptionId  String                         @db.NVarChar(36)
+  businessId      String                         @db.NVarChar(36)
+  amount          Float     @default(0)
+  currency        String    @default("usd")      @db.NVarChar(10)
+  status          String    @default("pending")  @db.NVarChar(30)
+  stripeInvoiceId String?                        @db.NVarChar(255)
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business     Business     @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([subscriptionId])
+  @@index([businessId])
+  @@index([status])
+  @@map("invoices")
+}
+
+// Review Reply Template
+model ReviewTemplate {
+  id         String    @id @default(cuid()) @db.NVarChar(36)
+  businessId String                         @db.NVarChar(36)
+  name       String                         @db.NVarChar(255)
+  tone       String    @default("professional") @db.NVarChar(50)
+  content    String                         @db.NVarChar(Max)
+  isDefault  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@index([isDefault])
+  @@map("review_templates")
+}
+
+// Scheduled Reply
+model ScheduledReply {
+  id          String    @id @default(cuid()) @db.NVarChar(36)
+  reviewId    String                         @db.NVarChar(36)
+  businessId  String                         @db.NVarChar(36)
+  scheduledAt DateTime
+  content     String                         @db.NVarChar(Max)
+  status      String    @default("PENDING")  @db.NVarChar(20)
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([reviewId])
+  @@index([businessId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("scheduled_replies")
+}
+
+// Webhook
+model Webhook {
+  id              String    @id @default(cuid()) @db.NVarChar(36)
+  businessId      String                         @db.NVarChar(36)
+  url             String                         @db.NVarChar(500)
+  events          String    @default("[]")       @db.NVarChar(Max)
+  secret          String?                        @db.NVarChar(255)
+  isActive        Boolean   @default(true)
+  lastTriggeredAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@index([isActive])
+  @@map("webhooks")
+}
+
+// User Session
+model UserSession {
+  id         String    @id @default(cuid()) @db.NVarChar(36)
+  userId     String                         @db.NVarChar(36)
+  token      String                         @db.NVarChar(Max)
+  deviceInfo String?                        @db.NVarChar(500)
+  ipAddress  String?                        @db.NVarChar(45)
+  expiresAt  DateTime
+  isRevoked  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([isRevoked])
+  @@map("user_sessions")
+}
+
+// Audit Log
+model AuditLog {
+  id         String    @id @default(cuid()) @db.NVarChar(36)
+  userId     String?                        @db.NVarChar(36)
+  businessId String?                        @db.NVarChar(36)
+  action     String                         @db.NVarChar(100)
+  entityType String                         @db.NVarChar(100)
+  entityId   String?                        @db.NVarChar(36)
+  oldValues  String?                        @db.NVarChar(Max)
+  newValues  String?                        @db.NVarChar(Max)
+  ipAddress  String?                        @db.NVarChar(45)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business Business? @relation(fields: [businessId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([businessId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

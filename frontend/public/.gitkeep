@@ -1,0 +1,2 @@
+# Public asset directory for Next.js
+# This file exists so Docker can copy the public folder during build.
