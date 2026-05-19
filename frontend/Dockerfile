@@ -1,5 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
+# NEXT_PUBLIC_* vars must be present at BUILD time — pass via --build-arg
+ARG NEXT_PUBLIC_API_URL=http://localhost/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY package*.json ./
 RUN npm ci
 COPY . .
